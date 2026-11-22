@@ -55,11 +55,14 @@ def create_app(overrides=None):
 
 
 def _register_blueprints(app):
-    from . import auth, meta, users
+    from . import auth, files, meta, transfers, users
 
     app.register_blueprint(meta.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(users.bp)
+    app.register_blueprint(files.bp)
+    app.register_blueprint(files.stats_bp)
+    app.register_blueprint(transfers.bp)
 
 
 def _register_hooks(app):

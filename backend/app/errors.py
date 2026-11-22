@@ -12,8 +12,11 @@ _CODES = {
     404: "not_found",
     405: "method_not_allowed",
     409: "conflict",
+    411: "length_required",
     413: "too_large",
+    415: "unsupported_type",
     429: "rate_limited",
+    507: "insufficient_storage",
 }
 
 

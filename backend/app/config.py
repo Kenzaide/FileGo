@@ -25,6 +25,7 @@ def load_config():
         "STORAGE_DIR": os.environ.get("STORAGE_DIR", str(BACKEND_DIR / "storage")),
         "MAX_UPLOAD_MB": _env_int("MAX_UPLOAD_MB", 100),
         "BUFFER_KB": _env_int("BUFFER_KB", 256),
+        "MIN_FREE_DISK_MB": _env_int("MIN_FREE_DISK_MB", 100),
         "CORS_ORIGINS": [
             o.strip()
             for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")

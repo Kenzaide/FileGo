@@ -22,7 +22,9 @@ _DUMMY_HASH = generate_password_hash("not-a-real-password")
 
 
 def hash_password(password):
-    return generate_password_hash(password, method="scrypt")
+    # Tests set a cheaper scrypt cost; real runs use the Werkzeug default.
+    method = current_app.config.get("PASSWORD_HASH_METHOD", "scrypt")
+    return generate_password_hash(password, method=method)
 
 
 def hash_token(token):
