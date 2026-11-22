@@ -354,7 +354,7 @@ function Shell({ children }) {
     <div className={'app ' + (theme === 'dark' ? 'dark' : '')}>
       <aside className={'sidebar ' + (mobile ? 'shown' : '')}>
         <div className="brand">
-          <div className="brand-mark"><FolderOpen size={23} /></div>
+          <div className="brand-mark"><img src="/filego-logo.png" alt="" /></div>
           <div><strong>FileGo</strong><small>Academic Sharing Hub</small></div>
           <button className="mobile-close" onClick={() => setMobile(false)}><X /></button>
         </div>
@@ -1045,7 +1045,7 @@ function Auth() {
   return (
     <div className="auth-page">
       <div className="auth-side">
-        <div className="auth-logo"><div className="brand-mark"><FolderOpen /></div><strong>FileGo</strong></div>
+        <div className="auth-logo"><div className="brand-mark"><img src="/filego-logo.png" alt="" /></div><strong>FileGo</strong></div>
         <div className="auth-message">
           <h1>Keep coursework organized. <em>Share it simply.</em></h1>
           <p>A simpler way to share academic materials, exchange reviewers, and collaborate over your local network.</p>
