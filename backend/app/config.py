@@ -32,6 +32,7 @@ def load_config():
             if o.strip()
         ],
         "REGISTRATION_MODE": os.environ.get("REGISTRATION_MODE", "open"),  # open | closed
+        "FRONTEND_DIST": os.environ.get("FRONTEND_DIST", str(BACKEND_DIR.parent / "dist")),
         "PORT": _env_int("PORT", 5000),
         "SERVER_MODE": "waitress",  # run.py sets "stream" for --stream
         "COOKIE_SECURE": False,  # plain HTTP on the LAN (documented in README)

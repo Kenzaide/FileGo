@@ -4,6 +4,7 @@
   python run.py --stream   streaming server (Werkzeug, threaded); use for experiments and the demo
 """
 import argparse
+from pathlib import Path
 
 from app import create_app, monitor
 from app.meta import lan_addresses
@@ -25,6 +26,8 @@ def main():
     print(f"  This computer:  http://localhost:{args.port}")
     for a in lan_addresses():
         print(f"  On the network: http://{a['address']}:{args.port}   ({a['interface']})")
+    if not (Path(app.config["FRONTEND_DIST"]) / "index.html").is_file():
+        print("NOTE: the web interface is not built yet. In the project folder run: npm install && npm run build")
     print("Press Ctrl+C to stop.")
     monitor.ensure_running()
 

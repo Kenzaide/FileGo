@@ -57,7 +57,7 @@ def create_app(overrides=None):
 
 
 def _register_blueprints(app):
-    from . import admin, auth, files, insights, meta, transfers, users
+    from . import admin, auth, files, insights, meta, spa, transfers, users
 
     app.register_blueprint(meta.bp)
     app.register_blueprint(auth.bp)
@@ -68,6 +68,7 @@ def _register_blueprints(app):
     app.register_blueprint(insights.history_bp)
     app.register_blueprint(insights.metrics_bp)
     app.register_blueprint(admin.bp)
+    spa.register(app)  # last: its catch-all route must not shadow the API
 
 
 def _register_hooks(app):
