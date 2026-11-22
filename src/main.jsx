@@ -1073,6 +1073,23 @@ function Auth() {
   }, [termsOpen]);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
+  const authScrollRef = useRef(null);
+  // Login and registration share this component; React retains its state when
+  // navigating between their routes. Reset both forms on a route switch.
+  useEffect(() => {
+    setName('');
+    setUsername('');
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirm(false);
+    setAcceptedTerms(false);
+    setTermsOpen(false);
+    setFormError('');
+    setBusy(false);
+    authScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+  }, [loc.pathname]);
   const passwordChecks = [
     { label: 'At least 8 characters', met: password.length >= 8 },
     { label: 'Includes a letter', met: /[A-Za-z]/.test(password) },
@@ -1102,7 +1119,6 @@ function Auth() {
       navigate('/dashboard');
     } catch (err) {
       setFormError(err.message || 'Unable to continue. Please try again.');
-      toast(err.message, 'error');
     } finally {
       setBusy(false);
     }
@@ -1123,7 +1139,7 @@ function Auth() {
         </div>
         <small>Share files. Exchange knowledge. Stay connected.</small>
       </div>
-      <div className="auth-form-wrap">
+      <div className="auth-form-wrap" ref={authScrollRef}>
         <div className="auth-form">
           <div className="mobile-brand"><FolderOpen /> FileGo</div>
           <h2>{registering ? 'Create your account' : 'Welcome back'}</h2>
