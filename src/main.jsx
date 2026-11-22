@@ -543,13 +543,25 @@ function MyFiles() {
   const { toast, bump } = useApp();
   const [upload, setUpload] = useState(false);
   const [edit, setEdit] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState('');
   const q = useDebounced(search);
   const res = useLoad(() => api.get('/api/files', { scope: 'mine', q, perPage: 200 }), [q]);
   const files = res.data?.items || [];
-  const remove = async (f) => {
-    if (!window.confirm(`Delete "${f.name}"?\n\nIf you sent this file to someone, it will also disappear from their inbox.`)) return;
-    try { await api.del('/api/files/' + f.id); toast('File deleted'); bump(); } catch (e) { toast(e.message, 'error'); }
+  const remove = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await api.del('/api/files/' + deleteTarget.id);
+      toast('File deleted');
+      setDeleteTarget(null);
+      bump();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setDeleting(false);
+    }
   };
   const verify = async (f) => {
     try {
@@ -582,12 +594,26 @@ function MyFiles() {
             <Button variant="subtle" onClick={() => verify(f)} title="Verify SHA-256 integrity" aria-label="Verify integrity"><ShieldCheck size={16} /></Button>
             <Button variant="subtle" onClick={() => toggle(f)} title="Toggle visibility" aria-label="Toggle visibility">{f.visibility === 'public' ? <Lock size={16} /> : <Globe size={16} />}</Button>
             <Button variant="subtle" onClick={() => setEdit(f)} title="Edit title, subject and category" aria-label="Edit"><Edit3 size={16} /></Button>
-            <Button variant="danger-icon" onClick={() => remove(f)} title="Delete" aria-label="Delete"><Trash2 size={16} /></Button>
+            <Button variant="danger-icon" onClick={() => setDeleteTarget(f)} title="Delete" aria-label="Delete"><Trash2 size={16} /></Button>
           </div>
         )) : <Empty title="No files yet" desc="Upload your first academic material to get started." />}
       </section>
       {upload && <UploadModal onClose={() => setUpload(false)} />}
       {edit && <EditModal file={edit} onClose={() => setEdit(null)} />}
+      {deleteTarget && (
+        <Modal title="Delete file?" onClose={() => !deleting && setDeleteTarget(null)}>
+          <div className="delete-confirm">
+            <div className="delete-confirm-icon"><Trash2 size={22} aria-hidden="true" /></div>
+            <p className="delete-confirm-message">Are you sure you want to delete this file?</p>
+            <div className="delete-confirm-file"><FileText size={19} aria-hidden="true" /><strong>{deleteTarget.name}</strong></div>
+            <p className="delete-confirm-warning">This action cannot be undone. If you shared this file with another student, it will also disappear from their inbox.</p>
+            <div className="modal-actions delete-confirm-actions">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+              <Button variant="delete-confirm-button" onClick={remove} loading={deleting}>{deleting ? 'Deleting…' : 'Delete file'}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
