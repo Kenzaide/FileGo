@@ -135,7 +135,12 @@ def resolve_subject(value, default_name=None):
     for s in db.session.scalars(select(Subject).where(Subject.is_active.is_(True))):
         if s.id == value or (s.code and s.code.lower() == low) or s.name.lower() == low or s.label.lower() == low:
             return s
-    raise ApiError("validation_error", "Unknown subject.", 400)
+    # Allow student-entered subjects while reusing existing subjects by label/name/code.
+    # Keep subject records normalized so library filters and file metadata still work.
+    subject = Subject(name=value, code=None, is_active=True)
+    db.session.add(subject)
+    db.session.flush()
+    return subject
 
 
 def resolve_category(value, default=None):

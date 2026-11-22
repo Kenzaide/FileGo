@@ -220,7 +220,7 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
   const categories = meta?.categories || [];
   const maxMb = meta?.maxUploadMb || 100;
   const [file, setFile] = useState(null);
-  const [subjectId, setSubjectId] = useState(subjects[0]?.id || '');
+  const [subjectId, setSubjectId] = useState('');
   const [category, setCategory] = useState(categories[0] || '');
   const [visibility, setVisibility] = useState(mode);
   const [recipient, setRecipient] = useState(recipientId);
@@ -239,6 +239,7 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!file) return toast('Choose a file first', 'error');
+    if (!subjectId.trim()) return toast('Enter a subject', 'error');
     if (visibility === 'direct' && !recipient) return toast('Select a recipient', 'error');
     const q = new URLSearchParams({ subject: subjectId, category });
     if (title.trim()) q.set('title', title.trim());
@@ -280,9 +281,8 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
         </label>
         <div className="two-col">
           <label>Subject
-            <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} disabled={busy}>
-              {subjects.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
+            <input type="text" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} placeholder="e.g. CMSC306 · Networks & Communication" maxLength={120} required disabled={busy} list="filego-subject-suggestions" autoComplete="off" />
+            <datalist id="filego-subject-suggestions">{subjects.map((sub) => <option key={sub.id} value={sub.label} />)}</datalist>
           </label>
           <label>Category
             <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={busy}>
