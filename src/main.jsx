@@ -392,7 +392,12 @@ function Shell({ children }) {
             <div className="avatar top-avatar">{initials(user.name)}</div>
           </div>
         </header>
-        <main className="content">{children}</main>
+        <main className="content">
+          {user.mustChangePassword && (
+            <div className="notice"><AlertCircle size={18} /><div><strong>Choose a new password</strong><p>An administrator reset your password. Please set a new one in <Link to="/settings">Settings</Link>.</p></div></div>
+          )}
+          {children}
+        </main>
       </div>
       {upload && <UploadModal onClose={() => setUpload(false)} />}
     </div>
@@ -854,6 +859,7 @@ function SettingsPage() {
     try {
       await api.post('/api/users/me/password', { currentPassword: cur, newPassword: next });
       setCur(''); setNext('');
+      setUser({ ...user, mustChangePassword: false });
       toast('Password changed. Other devices were signed out.');
     } catch (err) { toast(err.message, 'error'); }
   };
@@ -897,47 +903,115 @@ function SettingsPage() {
   );
 }
 
+function TempPasswordModal({ result, onClose }) {
+  const { toast } = useApp();
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(result.temporaryPassword); toast('Copied'); } catch { toast('Copy it by hand', 'error'); }
+  };
+  return (
+    <Modal title="Temporary password" subtitle={`For ${result.user.name} (@${result.user.username})`} onClose={onClose}>
+      <p>Give this password to the student. It is shown only once, and they must choose a new one when they log in.</p>
+      <div className="demo-hint"><strong style={{ fontFamily: 'monospace', fontSize: 22, letterSpacing: 1 }}>{result.temporaryPassword}</strong></div>
+      <div className="modal-actions"><Button variant="secondary" onClick={copy}>Copy</Button><Button onClick={onClose}>Done</Button></div>
+    </Modal>
+  );
+}
+
 function Admin() {
   const { user, toast, bump } = useApp();
-  const users = useLoad(() => api.get('/api/users'));
-  const files = useLoad(() => api.get('/api/files', { scope: 'library', perPage: 200 }));
+  const [fileSearch, setFileSearch] = useState('');
+  const [visibility, setVisibility] = useState('');
+  const [filePage, setFilePage] = useState(1);
+  const [temp, setTemp] = useState(null);
+  const fq = useDebounced(fileSearch);
+  const stats = useLoad(() => api.get('/api/admin/stats'));
+  const users = useLoad(() => api.get('/api/admin/users', { perPage: 200 }));
+  const files = useLoad(() => api.get('/api/admin/files', { q: fq, visibility, page: filePage, perPage: 25 }), [fq, visibility, filePage]);
   if (user.role !== 'admin') return <Navigate to="/dashboard" />;
   const list = files.data?.items || [];
-  const people = [user, ...(users.data?.items || [])];
-  const remove = async (f) => {
-    if (!window.confirm('Remove this file from the system?')) return;
-    try { await api.del('/api/files/' + f.id); toast('File removed'); bump(); } catch (e) { toast(e.message, 'error'); }
+  const people = users.data?.items || [];
+  const s = stats.data;
+  const act = async (fn, ok) => {
+    try { const r = await fn(); if (ok) toast(ok); bump(); return r; } catch (e) { toast(e.message, 'error'); return null; }
+  };
+  const remove = (f) => {
+    if (!window.confirm(`Remove "${f.name}" from the system?\n\nIt will also disappear from any inbox it was sent to. This cannot be undone.`)) return;
+    act(() => api.del('/api/admin/files/' + f.id), 'File removed');
+  };
+  const setActive = (u, isActive) => {
+    if (!isActive && !window.confirm(`Deactivate ${u.name}? They will be logged out and cannot sign in.`)) return;
+    act(() => api.patch('/api/admin/users/' + u.id, { isActive }), isActive ? 'Account activated' : 'Account deactivated');
+  };
+  const setRole = (u, role) => {
+    if (!window.confirm(role === 'admin' ? `Make ${u.name} an administrator? Administrators can see every file.` : `Remove administrator rights from ${u.name}?`)) return;
+    act(() => api.patch('/api/admin/users/' + u.id, { role }), 'Role updated');
+  };
+  const reset = async (u) => {
+    if (!window.confirm(`Reset the password for ${u.name}? They will be logged out.`)) return;
+    const r = await act(() => api.post('/api/admin/users/' + u.id + '/reset-password'));
+    if (r) setTemp(r);
   };
   return (
     <>
-      <Header title="Administration" subtitle="Manage shared academic resources and view system information." />
-      <div className="stats mini-stats">
-        <Stat label="Registered users" value={people.length} Icon={Users} foot="Active accounts" />
-        <Stat label="Library files" value={files.data?.total ?? '—'} Icon={FolderOpen} foot="Public materials" />
-        <Stat label="Library storage" value={fmt(list.reduce((a, f) => a + f.size, 0))} Icon={HardDrive} foot="Size of public materials" />
+      <Header
+        title="Administration"
+        subtitle="Manage users and shared files, and view system-wide statistics."
+        actions={<a className="btn secondary" href="/api/admin/transfers/export.csv" download><Download size={16} /> Export all transfers (CSV)</a>}
+      />
+      <div className="stats">
+        <Stat label="Registered users" value={s ? s.users.total : '—'} Icon={Users} foot={s ? `${s.users.active} active, ${s.users.admins} administrator${s.users.admins !== 1 ? 's' : ''}` : 'Accounts'} />
+        <Stat label="Files" value={s ? s.files.total : '—'} Icon={FolderOpen} foot={s ? `${s.files.public} public, ${s.files.private} private` : 'All materials'} />
+        <Stat label="Storage used by files" value={s ? fmt(s.files.storageBytes) : '—'} Icon={HardDrive} foot={s ? `Disk free: ${fmt(s.disk.freeBytes)}` : 'On the server'} />
+        <Stat label="Transfer success" value={s?.activity.successRate != null ? s.activity.successRate + '%' : '—'} Icon={CheckCircle2} foot={s ? `${s.activity.uploads} uploads, ${s.activity.downloads} downloads, ${s.activity.failed} failed` : 'All users'} />
       </div>
-      <div className="two-panel">
-        <section className="panel">
-          <div className="panel-title"><div><h3>Registered students</h3><p>Users on this server</p></div></div>
-          {people.map((u) => (
-            <div className="file-row" key={u.id}>
-              <div className="avatar">{initials(u.name)}</div>
-              <div className="file-main"><strong>{u.name}</strong><span>@{u.username}</span></div>
-              {u.role && <Tag>{u.role}</Tag>}
-            </div>
-          ))}
-        </section>
-        <section className="panel">
-          <div className="panel-title"><div><h3>Shared library moderation</h3><p>Remove inappropriate public materials</p></div></div>
-          {files.loading && !list.length ? <Loading /> : list.map((f) => (
-            <div className="file-row" key={f.id}>
-              <div className="file-icon pdf">{iconFor(f)}</div>
-              <div className="file-main"><strong>{f.name}</strong><span>{f.owner}</span></div>
-              <Button variant="danger-icon" onClick={() => remove(f)} aria-label={'Remove ' + f.name}><Trash2 size={17} /></Button>
-            </div>
-          ))}
-        </section>
-      </div>
+      {s && (
+        <div className="two-panel">
+          <section className="panel">
+            <div className="panel-title"><div><h3>Files by subject</h3><p>Where the library's content is</p></div></div>
+            {s.bySubject.length ? s.bySubject.map((x) => <div className="setting-info" key={x.subject}><strong>{x.subject}</strong><span>{x.files} file{x.files !== 1 ? 's' : ''}</span></div>) : <Empty title="No files yet" />}
+          </section>
+          <section className="panel">
+            <div className="panel-title"><div><h3>Top uploaders</h3><p>By storage used</p></div></div>
+            {s.topUploaders.length ? s.topUploaders.map((x) => <div className="setting-info" key={x.id}><strong>{x.name}</strong><span>{x.files} file{x.files !== 1 ? 's' : ''} · {fmt(x.storageBytes)}</span></div>) : <Empty title="No uploads yet" />}
+            <div className="setting-info"><strong>Direct sends</strong><span>{s.transfers.sent} total · {s.transfers.delivered} waiting · {s.transfers.downloaded} downloaded</span></div>
+          </section>
+        </div>
+      )}
+      <section className="panel">
+        <div className="panel-title"><div><h3>Users</h3><p>Deactivating an account logs the person out immediately</p></div></div>
+        {users.loading && !people.length ? <Loading /> : people.map((u) => (
+          <div className="file-row" key={u.id}>
+            <div className="avatar">{initials(u.name)}</div>
+            <div className="file-main"><strong>{u.name}</strong><span>@{u.username} · {u.fileCount} file{u.fileCount !== 1 ? 's' : ''} · {fmt(u.storageBytes)}{u.lastLoginAt ? ' · last login ' + localDate(u.lastLoginAt) : ''}</span></div>
+            <Tag tone={u.role === 'admin' ? 'purple' : ''}>{u.role === 'admin' ? 'Administrator' : 'Student'}</Tag>
+            <Tag tone={u.isActive ? 'green' : ''}>{u.isActive ? 'Active' : 'Deactivated'}</Tag>
+            {u.id !== user.id && (
+              <>
+                <Button variant="secondary" onClick={() => reset(u)}>Reset password</Button>
+                <Button variant="secondary" onClick={() => setRole(u, u.role === 'admin' ? 'student' : 'admin')}>{u.role === 'admin' ? 'Make student' : 'Make admin'}</Button>
+                <Button variant="secondary" onClick={() => setActive(u, !u.isActive)}>{u.isActive ? 'Deactivate' : 'Activate'}</Button>
+              </>
+            )}
+          </div>
+        ))}
+      </section>
+      <section className="panel">
+        <div className="panel-title"><div><h3>All files</h3><p>Public and private. Administrators can see and remove any file.</p></div></div>
+        <div className="filters">
+          <div className="search"><Search size={18} /><input placeholder="Search by title or uploader..." value={fileSearch} onChange={(e) => { setFileSearch(e.target.value); setFilePage(1); }} /></div>
+          <select value={visibility} onChange={(e) => { setVisibility(e.target.value); setFilePage(1); }} aria-label="Visibility"><option value="">All files</option><option value="public">Public</option><option value="private">Private</option></select>
+        </div>
+        {files.loading && !list.length ? <Loading /> : list.length ? list.map((f) => (
+          <div className="file-row" key={f.id}>
+            <div className={'file-icon ' + (f.kind || '').toLowerCase()}>{iconFor(f)}</div>
+            <div className="file-main"><strong title={f.name}>{f.name}</strong><span>{f.subject} · {fmt(f.size)} · {f.owner} · {f.downloads} download{f.downloads !== 1 ? 's' : ''}</span></div>
+            <Tag tone={f.visibility === 'public' ? 'green' : 'purple'}>{f.visibility === 'public' ? 'Public' : 'Private'}</Tag>
+            <Button variant="danger-icon" onClick={() => remove(f)} aria-label={'Remove ' + f.name} title="Remove from the system"><Trash2 size={17} /></Button>
+          </div>
+        )) : <Empty title="No files found" desc="Nothing matches this search." />}
+        <Pager page={filePage} perPage={25} total={files.data?.total || 0} onPage={setFilePage} />
+      </section>
+      {temp && <TempPasswordModal result={temp} onClose={() => setTemp(null)} />}
     </>
   );
 }
