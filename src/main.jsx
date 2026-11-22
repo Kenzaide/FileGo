@@ -478,10 +478,13 @@ function Library() {
       <div className="panel">
         <div className="filters">
           <div className="search"><Search size={18} /><input placeholder="Search by title, subject, or uploader..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-          <select value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject">
-            <option value="">All subjects</option>
-            {(meta?.subjects || []).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
+          <details className="library-subject-filter">
+            <summary aria-label="Filter by subject">{(meta?.subjects || []).find((item) => String(item.id) === String(subject))?.label || 'All subjects'} <ChevronDown size={15} aria-hidden="true" /></summary>
+            <div className="library-subject-options" role="group" aria-label="Subjects">
+              <button type="button" className={!subject ? 'selected' : ''} onClick={(e) => { setSubject(''); e.currentTarget.closest('details').open = false; }}>All subjects</button>
+              {(meta?.subjects || []).map((item) => <button type="button" key={item.id} className={String(subject) === String(item.id) ? 'selected' : ''} onClick={(e) => { setSubject(String(item.id)); e.currentTarget.closest('details').open = false; }}>{item.label}</button>)}
+            </div>
+          </details>
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Material type">
             <option value="">All types</option>
             {(meta?.categories || []).map((s) => <option key={s}>{s}</option>)}
