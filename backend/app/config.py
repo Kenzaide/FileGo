@@ -35,7 +35,7 @@ def load_config():
         "FRONTEND_DIST": os.environ.get("FRONTEND_DIST", str(BACKEND_DIR.parent / "dist")),
         "PORT": _env_int("PORT", 5000),
         "SERVER_MODE": "waitress",  # run.py sets "stream" for --stream
-        "COOKIE_SECURE": False,  # plain HTTP on the LAN (documented in README)
+        "COOKIE_SECURE": os.environ.get("FLASK_ENV") == "production",  # HTTPS on Render, HTTP on LAN
         "LOGIN_MAX_PER_USER": 5,
         "LOGIN_MAX_PER_IP": 20,
         "LOGIN_WINDOW_SECONDS": 15 * 60,
