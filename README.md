@@ -1,4 +1,4 @@
-# FILEGO — Academic Sharing Hub (Frontend Prototype)
+# FileGo — Academic Sharing Hub (Frontend Prototype)
 
 A responsive React + Vite frontend for an academic file-sharing system, with shared library, direct sharing, file management, inbox, transfer history, performance demo, and administration.
 
