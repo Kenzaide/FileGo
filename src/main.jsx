@@ -1058,19 +1058,45 @@ function Auth() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState('');
+  const passwordChecks = [
+    { label: 'At least 8 characters', met: password.length >= 8 },
+    { label: 'Includes a letter', met: /[A-Za-z]/.test(password) },
+    { label: 'Includes a number', met: /\d/.test(password) },
+    { label: 'Includes a symbol for extra security (recommended)', met: /[^A-Za-z0-9]/.test(password) },
+  ];
+  const passwordMatch = confirmPassword.length > 0 && password === confirmPassword;
   if (user) return <Navigate to="/dashboard" replace />;
 
   const submit = async (e) => {
     e.preventDefault();
+    setFormError('');
+    if (registering && password !== confirmPassword) {
+      setFormError('Passwords do not match. Please check your confirmation.');
+      return;
+    }
+    if (registering && !acceptedTerms) {
+      setFormError('Please read and accept the terms before creating an account.');
+      return;
+    }
     setBusy(true);
     try {
       const u = registering
-        ? await apiRegister({ name, username, email: email || undefined, password })
-        : await apiLogin(username, password);
+        ? await apiRegister({ name: name.trim(), username: username.trim(), email: email.trim() || undefined, password })
+        : await apiLogin(username.trim(), password);
       setUser(u);
       navigate('/dashboard');
-    } catch (err) { toast(err.message, 'error'); setBusy(false); }
+    } catch (err) {
+      setFormError(err.message || 'Unable to continue. Please try again.');
+      toast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1094,20 +1120,43 @@ function Auth() {
           <h2>{registering ? 'Create your account' : 'Welcome back'}</h2>
           <p>{registering ? 'Join your academic sharing community.' : 'Sign in to continue to your academic workspace.'}</p>
           <form onSubmit={submit} className="form-stack">
-            {registering && <label>Full name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" maxLength={80} autoComplete="name" /></label>}
+            {registering && <label>Full name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Juan Dela Cruz" maxLength={80} autoComplete="name" disabled={busy} /></label>}
             <label>Username
-              <input required value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. juan.delacruz" autoComplete="username" autoCapitalize="none" spellCheck={false} />
+              <input required value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. juan.delacruz" autoComplete="username" autoCapitalize="none" spellCheck={false} disabled={busy} />
             </label>
-            {registering && <label>Email address (optional)<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" /></label>}
+            {registering && <label>Email address (optional)<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. juan@example.com" autoComplete="email" disabled={busy} /></label>}
             <label>Password
-              <input required type="password" minLength={registering ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={registering ? 'At least 8 characters' : 'Enter password'} autoComplete={registering ? 'new-password' : 'current-password'} />
+              <span className="auth-password-field">
+                <input required type={showPassword ? 'text' : 'password'} minLength={registering ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={registering ? 'Create a strong password' : 'Enter your password'} autoComplete={registering ? 'new-password' : 'current-password'} disabled={busy} />
+                <button type="button" className="auth-password-toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}><Eye size={17} /><span>{showPassword ? 'Hide' : 'Show'}</span></button>
+              </span>
             </label>
+            {registering && <>
+              <div className="auth-password-guidance" aria-label="Password guidelines">
+                <strong>Password guidelines</strong>
+                <ul>{passwordChecks.map((check, i) => <li key={check.label} className={check.met ? 'met' : ''}><CheckCircle2 size={14} aria-hidden="true" />{check.label}{i === 3 ? '' : ''}</li>)}</ul>
+                <small>Only the 8-character minimum is required by this form; other tips help you choose a stronger password.</small>
+              </div>
+              <label>Confirm password
+                <span className="auth-password-field">
+                  <input required type={showConfirm ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your password" autoComplete="new-password" disabled={busy} aria-invalid={confirmPassword.length > 0 && !passwordMatch} aria-describedby="auth-confirm-feedback" />
+                  <button type="button" className="auth-password-toggle" onClick={() => setShowConfirm((v) => !v)} aria-label={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'} aria-pressed={showConfirm}><Eye size={17} /><span>{showConfirm ? 'Hide' : 'Show'}</span></button>
+                </span>
+                <small id="auth-confirm-feedback" className={'auth-password-match ' + (passwordMatch ? 'met' : '')}>{confirmPassword ? (passwordMatch ? 'Passwords match' : 'Passwords do not match yet') : 'Enter the same password again.'}</small>
+              </label>
+              <div className="auth-terms">
+                <details><summary>Read terms and conditions</summary>
+                  <p>FileGo is an academic file-sharing platform. Upload only materials you have permission to share, respect other users, and do not post unlawful, harmful, or misleading content. Shared files may be accessible to other users of this FileGo server, depending on the visibility you select. Your account and uploaded files are handled by the operator of this server.</p>
+                  <p>This is a short draft of platform rules, not a complete legal agreement or privacy policy. The project owner should review and publish the final terms before public deployment.</p>
+                </details>
+                <label className="auth-terms-check"><input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} disabled={busy} required /><span>I have read and agree to the FileGo terms and conditions.</span></label>
+              </div>
+            </>}
+            {formError && <p className="auth-form-error" role="alert">{formError}</p>}
             <Button type="submit" loading={busy}>{registering ? 'Create account' : 'Sign in'} <ChevronRight size={18} /></Button>
           </form>
           <div className="auth-switch">{registering ? 'Already have an account?' : 'New to FileGo?'} <Link to={registering ? '/login' : '/register'}>{registering ? 'Sign in' : 'Create an account'}</Link></div>
-          {DEMO_MODE && (
-            <div className="demo-hint"><strong>Demo access</strong><span>student / demo123 (administrator)</span><small>Also: alex and jamie, same password.</small></div>
-          )}
+          {DEMO_MODE && <div className="demo-hint"><strong>Demo access</strong><span>student / demo123 (administrator)</span><small>Also: alex and jamie, same password.</small></div>}
         </div>
       </div>
     </div>
