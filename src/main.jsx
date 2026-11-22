@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import './style.css';
-import { api, login as apiLogin, register as apiRegister, restoreSession, logout as apiLogout, setUnauthorizedHandler, uploadRaw, reportClientTiming, startDownload, previewUrl } from './api.js';
+import { api, request, login as apiLogin, register as apiRegister, restoreSession, logout as apiLogout, setUnauthorizedHandler, uploadRaw, reportClientTiming, startDownload, previewUrl } from './api.js';
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 
@@ -546,6 +546,13 @@ function MyFiles() {
     if (!window.confirm(`Delete "${f.name}"?\n\nIf you sent this file to someone, it will also disappear from their inbox.`)) return;
     try { await api.del('/api/files/' + f.id); toast('File deleted'); bump(); } catch (e) { toast(e.message, 'error'); }
   };
+  const verify = async (f) => {
+    try {
+      const r = await api.post('/api/files/' + f.id + '/verify');
+      if (r.ok) toast(`Integrity verified: SHA-256 matches (${r.seconds.toFixed(2)} s)`);
+      else toast(r.error || 'Integrity check failed: the stored file no longer matches its SHA-256.', 'error');
+    } catch (e) { toast(e.message, 'error'); }
+  };
   const toggle = async (f) => {
     try { await api.patch('/api/files/' + f.id, { visibility: f.visibility === 'public' ? 'private' : 'public' }); toast('Visibility updated'); bump(); } catch (e) { toast(e.message, 'error'); }
   };
@@ -567,6 +574,7 @@ function MyFiles() {
               <span>{f.subject} · {f.category} · {fmt(f.size)} · {localDate(f.createdAt)} · {f.downloads} download{f.downloads !== 1 ? 's' : ''}</span>
             </div>
             <Tag tone={f.visibility === 'public' ? 'green' : 'purple'}>{f.visibility === 'public' ? 'Public' : 'Private'}</Tag>
+            <Button variant="subtle" onClick={() => verify(f)} title="Verify SHA-256 integrity" aria-label="Verify integrity"><ShieldCheck size={16} /></Button>
             <Button variant="subtle" onClick={() => toggle(f)} title="Toggle visibility" aria-label="Toggle visibility">{f.visibility === 'public' ? <Lock size={16} /> : <Globe size={16} />}</Button>
             <Button variant="subtle" onClick={() => setEdit(f)} title="Edit title, subject and category" aria-label="Edit"><Edit3 size={16} /></Button>
             <Button variant="danger-icon" onClick={() => remove(f)} title="Delete" aria-label="Delete"><Trash2 size={16} /></Button>
@@ -653,46 +661,98 @@ function InboxPage() {
 }
 
 const operation = (x) => (x.type === 'upload' ? 'Upload' : 'Download');
+const secs = (v) => (v != null ? v.toFixed(2) + ' s' : '—');
+const mbps = (v) => (v != null ? v.toFixed(2) + ' MB/s' : '—');
 
 function HistoryPage() {
   const [page, setPage] = useState(1);
-  const res = useLoad(() => api.get('/api/history', { page, perPage: 25 }), [page]);
+  const [type, setType] = useState('');
+  const [status, setStatus] = useState('');
+  const res = useLoad(() => api.get('/api/history', { page, perPage: 25, type, status }), [page, type, status]);
   const rows = res.data?.items || [];
+  const filter = (setter) => (e) => { setter(e.target.value); setPage(1); };
   return (
     <>
-      <Header title="Transfer History" subtitle="Review your recent uploads and downloads." />
+      <Header
+        title="Transfer History"
+        subtitle="Review your uploads and downloads with the time, speed and resources each one used."
+        actions={<a className="btn secondary" href={'/api/history/export.csv' + (type || status ? '?' + new URLSearchParams(Object.entries({ type, status }).filter(([, v]) => v)) : '')} download><Download size={16} /> Export CSV</a>}
+      />
       <div className="stats mini-stats">
         <Stat label="Transfer records" value={res.data?.total ?? '—'} Icon={History} foot="Uploads and downloads" />
         <Stat label="Completed (this page)" value={rows.filter((x) => x.status === 'completed').length} Icon={CheckCircle2} foot="Successful operations" />
-        <Stat label="Data recorded (this page)" value={fmt(rows.reduce((a, x) => a + (x.bytesTransferred || 0), 0))} Icon={HardDrive} foot="Bytes moved" />
+        <Stat label="Failed (this page)" value={rows.filter((x) => x.status === 'failed').length} Icon={AlertCircle} foot="Interrupted or rejected" />
       </div>
       <section className="panel">
-        <div className="panel-title"><div><h3>Activity log</h3><p>Time measured by the server; the browser's own upload time is used when it was reported</p></div></div>
+        <div className="panel-title"><div><h3>Activity log</h3><p>Server time is measured by the server from the first byte to the last. Browser time is the total your device saw, including the network.</p></div></div>
+        <div className="filters">
+          <select value={type} onChange={filter(setType)} aria-label="Operation"><option value="">All operations</option><option value="upload">Uploads</option><option value="download">Downloads</option></select>
+          <select value={status} onChange={filter(setStatus)} aria-label="Status"><option value="">All results</option><option value="completed">Completed</option><option value="failed">Failed</option></select>
+        </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>File</th><th>Operation</th><th>Size</th><th>Duration</th><th>Speed</th><th>Date</th><th>Status</th></tr></thead>
+            <thead><tr><th>File</th><th>Operation</th><th>Size</th><th>Server time</th><th>Browser time</th><th>Speed</th><th>Buffer</th><th>CPU avg</th><th>Integrity</th><th>Date</th><th>Status</th></tr></thead>
             <tbody>
               {rows.map((x) => (
                 <tr key={x.id}>
                   <td><strong>{x.name}</strong></td><td>{operation(x)}</td><td>{fmt(x.size)}</td>
-                  <td>{x.seconds != null ? x.seconds.toFixed(2) + ' s' : '—'}</td>
-                  <td>{x.speedMBps != null ? x.speedMBps.toFixed(2) + ' MB/s' : '—'}</td>
+                  <td>{secs(x.serverSeconds)}</td>
+                  <td>{secs(x.clientSeconds)}</td>
+                  <td>{mbps(x.speedMBps)}</td>
+                  <td>{x.bufferKb ? x.bufferKb + ' KB' : '—'}</td>
+                  <td>{x.cpuAvg != null ? x.cpuAvg.toFixed(0) + '%' : '—'}</td>
+                  <td>{x.sha256Verified === true ? <Tag tone="green">Verified</Tag> : x.sha256Verified === false ? <Tag>Mismatch</Tag> : '—'}</td>
                   <td>{localDate(x.createdAt)}</td>
-                  <td><Tag tone={x.status === 'completed' ? 'green' : ''}>{x.status === 'completed' ? 'Completed' : 'Failed'}</Tag></td>
+                  <td><span title={x.error || ''}><Tag tone={x.status === 'completed' ? 'green' : ''}>{x.status === 'completed' ? 'Completed' : 'Failed'}</Tag></span></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {res.loading && !rows.length ? <Loading /> : !rows.length && <Empty icon={History} title="No transfer activity" />}
+        {res.loading && !rows.length ? <Loading /> : !rows.length && <Empty icon={History} title="No transfer activity" desc="Uploads and downloads will be listed here." />}
         <Pager page={page} perPage={25} total={res.data?.total || 0} onPage={setPage} />
       </section>
     </>
   );
 }
 
+const GROUP_LABELS = { size: 'File size (Test 1)', buffer: 'Buffer size (Test 2)', concurrency: 'Simultaneous transfers (Test 3)', label: 'Experiment label (Tests 4 and 5)', device: 'Client device (Test 5)' };
+
+function ExperimentControls() {
+  const { toast } = useApp();
+  const [label, setLabel] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    api.get('/api/metrics/experiment').then((e) => { setLabel(e.label || ''); setNote(e.networkNote || ''); }).catch(() => {});
+  }, []);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await request('/api/metrics/experiment', { method: 'PUT', json: { label, networkNote: note } });
+      toast(label ? 'Experiment label set' : 'Experiment label cleared');
+    } catch (e) { toast(e.message, 'error'); }
+    setSaving(false);
+  };
+  return (
+    <section className="panel">
+      <div className="panel-title"><div><h3>Experiment labels</h3><p>Applied to every transfer made while set, so repeated tests can be grouped and the network conditions are recorded</p></div></div>
+      <div className="two-col">
+        <label className="field-label">Label<input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} placeholder="Test 2, 256 KB" /></label>
+        <label className="field-label">Network note<input value={note} maxLength={255} onChange={(e) => setNote(e.target.value)} placeholder="Phone hotspot, laptop on AC, 2 m apart" /></label>
+      </div>
+      <div className="modal-actions"><Button loading={saving} onClick={save}>Save label</Button></div>
+    </section>
+  );
+}
+
 function Performance() {
+  const { user } = useApp();
+  const isAdmin = user.role === 'admin';
   const [live, setLive] = useState(null);
+  const [groupBy, setGroupBy] = useState('size');
+  const [type, setType] = useState('upload');
+  const [scope, setScope] = useState('mine');
   useEffect(() => {
     let alive = true;
     const poll = () => api.get('/api/metrics/live').then((r) => alive && setLive(r)).catch(() => {});
@@ -700,34 +760,71 @@ function Performance() {
     const t = setInterval(poll, 2000);
     return () => { alive = false; clearInterval(t); };
   }, []);
-  const hist = useLoad(() => api.get('/api/history', { type: 'upload', status: 'completed', perPage: 8 }));
-  const logs = (hist.data?.items || []).filter((l) => l.speedMBps != null);
-  const chart = [...logs].reverse().map((l, i) => ({ name: 'Run ' + (i + 1), speed: +l.speedMBps.toFixed(2), seconds: +(l.seconds || 0).toFixed(2) }));
-  const avg = logs.length ? (logs.reduce((a, l) => a + l.speedMBps, 0) / logs.length).toFixed(1) + ' MB/s' : '—';
+  const sum = useLoad(() => api.get('/api/metrics/summary', { groupBy, type, scope }), [groupBy, type, scope]);
   const cur = live?.current;
+  const series = (live?.samples || []).slice(-120).map((s, i) => ({ name: new Date(s.t).toLocaleTimeString(), cpu: s.cpu, ram: s.ramPercent, active: s.active, i }));
+  const items = sum.data?.items || [];
+  const overall = sum.data?.overall;
+  const bars = items.map((g) => ({ name: g.group, speed: g.avgSpeedMBps ?? 0, cpu: g.avgCpu ?? 0, seconds: g.avgSeconds ?? 0 }));
+  const net = live?.system;
   return (
     <>
-      <Header title="Performance Monitor" subtitle="Analyze file transfer activity and system resource metrics." />
+      <Header title="Performance Monitor" subtitle="Live server resources and measured transfer performance." />
       <div className="stats">
-        <Stat label="Completed uploads" value={hist.data?.total ?? '—'} Icon={Upload} foot="Measured by the server" />
-        <Stat label="Average upload speed" value={avg} Icon={Activity} foot="Recent uploads" />
-        <Stat label="Server CPU" value={cur ? cur.cpu.toFixed(0) + '%' : '—'} Icon={Cpu} foot="Whole machine, live" />
+        <Stat label="Server CPU" value={cur ? cur.cpu.toFixed(0) + '%' : '—'} Icon={Cpu} foot={cur ? `${live.current.cpuCount || ''} logical cores, live` : 'Whole machine, live'} />
         <Stat label="Server RAM" value={cur ? cur.ramPercent.toFixed(0) + '%' : '—'} Icon={MemoryStick} foot={cur ? `FileGo process: ${cur.procMb.toFixed(0)} MB` : 'Live'} />
+        <Stat label="Transfers in progress" value={cur ? cur.active : '—'} Icon={Activity} foot={live ? `${live.serverMode} mode, ${live.bufferKb} KB buffer` : 'Live'} />
+        <Stat label="Success rate" value={overall?.successRate != null ? overall.successRate + '%' : '—'} Icon={CheckCircle2} foot={overall ? `${overall.completed} of ${overall.count} transfers` : 'Selected transfers'} />
       </div>
-      <div className="two-panel">
-        <section className="panel">
-          <div className="panel-title"><div><h3>Upload speed</h3><p>Recent uploads (MB/s)</p></div></div>
-          <div className="chart">{chart.length ? (
-            <ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><defs><linearGradient id="fillSpeed" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6c7ef6" stopOpacity={0.3} /><stop offset="100%" stopColor="#6c7ef6" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis /><Tooltip /><Area type="monotone" dataKey="speed" stroke="#6879e8" fill="url(#fillSpeed)" strokeWidth={3} /></AreaChart></ResponsiveContainer>
-          ) : <Empty icon={ChartNoAxesCombined} title="No measurements yet" desc="Upload a file to see its speed here." />}</div>
-        </section>
-        <section className="panel">
-          <div className="panel-title"><div><h3>Upload duration</h3><p>Recent uploads (seconds)</p></div></div>
-          <div className="chart">{chart.length ? (
-            <ResponsiveContainer width="100%" height="100%"><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="seconds" fill="#8d9bf2" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer>
-          ) : <Empty icon={Activity} title="No measurements yet" desc="Charts appear after uploads." />}</div>
-        </section>
-      </div>
+
+      <section className="panel">
+        <div className="panel-title"><div><h3>Live server load</h3><p>CPU and memory of the server over the last few minutes (percent)</p></div></div>
+        <div className="chart">{series.length > 1 ? (
+          <ResponsiveContainer width="100%" height="100%"><AreaChart data={series}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" minTickGap={40} /><YAxis domain={[0, 100]} /><Tooltip /><Area type="monotone" dataKey="cpu" name="CPU %" stroke="#6879e8" fill="#6c7ef6" fillOpacity={0.2} strokeWidth={2} isAnimationActive={false} /><Area type="monotone" dataKey="ram" name="RAM %" stroke="#46b78c" fill="#46b78c" fillOpacity={0.12} strokeWidth={2} isAnimationActive={false} /></AreaChart></ResponsiveContainer>
+        ) : <Empty icon={Cpu} title="Collecting samples" desc="The graph fills in a few seconds after the server starts sampling." />}</div>
+        {net && <div className="note"><Wifi size={16} /><span>Server disk used: {fmt(net.diskUsedBytes)} of {fmt(net.diskTotalBytes)}. Network since boot: {fmt(net.netBytesSent)} sent, {fmt(net.netBytesRecv)} received.</span></div>}
+      </section>
+
+      <section className="panel">
+        <div className="panel-title"><div><h3>Transfer comparison</h3><p>Average speed and CPU for the group you choose. Speed is size divided by server time.</p></div></div>
+        <div className="filters">
+          <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} aria-label="Group by">{Object.entries(GROUP_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Operation"><option value="upload">Uploads</option><option value="download">Downloads</option></select>
+          {isAdmin && <select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Whose transfers"><option value="mine">My transfers</option><option value="all">All users</option></select>}
+        </div>
+        {sum.data?.note && <div className="notice"><AlertCircle size={18} /><div><strong>Timing note</strong><p>{sum.data.note}</p></div></div>}
+        <div className="two-panel">
+          <div>
+            <h3>Average speed (MB/s)</h3>
+            <div className="chart">{bars.length ? (
+              <ResponsiveContainer width="100%" height="100%"><BarChart data={bars}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="speed" name="MB/s" fill="#8d9bf2" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer>
+            ) : <Empty icon={ChartNoAxesCombined} title="No measurements yet" desc="Make some transfers to see them compared here." />}</div>
+          </div>
+          <div>
+            <h3>Average CPU during transfer (%)</h3>
+            <div className="chart">{bars.length ? (
+              <ResponsiveContainer width="100%" height="100%"><BarChart data={bars}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis domain={[0, 100]} /><Tooltip /><Bar dataKey="cpu" name="CPU %" fill="#6bc3a3" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer>
+            ) : <Empty icon={Cpu} title="No measurements yet" desc="CPU readings are recorded for every transfer." />}</div>
+          </div>
+        </div>
+        {items.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Group</th><th>Transfers</th><th>Success</th><th>Avg speed</th><th>Median speed</th><th>Avg server time</th><th>Avg browser time</th><th>Disk write</th><th>Hashing</th><th>Avg CPU</th><th>Peak CPU</th><th>Server RAM</th></tr></thead>
+              <tbody>{items.map((g) => (
+                <tr key={g.group}>
+                  <td><strong>{g.group}</strong></td><td>{g.count}</td><td>{g.successRate != null ? g.successRate + '%' : '—'}</td>
+                  <td>{mbps(g.avgSpeedMBps)}</td><td>{mbps(g.medianSpeedMBps)}</td><td>{secs(g.avgSeconds)}</td><td>{secs(g.avgClientSeconds)}</td>
+                  <td>{secs(g.avgWriteSeconds)}</td><td>{secs(g.avgHashSeconds)}</td>
+                  <td>{g.avgCpu != null ? g.avgCpu.toFixed(0) + '%' : '—'}</td><td>{g.peakCpu != null ? g.peakCpu.toFixed(0) + '%' : '—'}</td><td>{g.avgRamProcMb != null ? g.avgRamProcMb.toFixed(0) + ' MB' : '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+        <div className="note"><AlertCircle size={16} /><span>Server time starts at the first byte and ends at the last, so it matches the network only in the streaming server mode. Browser time includes everything your device saw. Readings come from the same laptop that is serving the files.</span></div>
+      </section>
+      {isAdmin && <ExperimentControls />}
     </>
   );
 }
