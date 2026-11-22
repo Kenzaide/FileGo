@@ -5,7 +5,7 @@
 """
 import argparse
 
-from app import create_app
+from app import create_app, monitor
 from app.meta import lan_addresses
 
 app = create_app()  # also used by the `flask` CLI (FLASK_APP=run.py)
@@ -26,6 +26,7 @@ def main():
     for a in lan_addresses():
         print(f"  On the network: http://{a['address']}:{args.port}   ({a['interface']})")
     print("Press Ctrl+C to stop.")
+    monitor.ensure_running()
 
     if args.stream:
         app.run(host=args.host, port=args.port, threaded=True, debug=False)

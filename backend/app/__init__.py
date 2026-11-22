@@ -11,6 +11,7 @@ from flask_cors import CORS
 from .config import BACKEND_DIR, load_config, resolve_secret_key
 from .constants import SUBJECTS
 from .errors import register_error_handlers
+from . import monitor
 from .extensions import db
 from .ratelimit import AttemptLimiter
 
@@ -50,12 +51,13 @@ def create_app(overrides=None):
         db.create_all()
         ensure_subjects()
 
+    monitor.configure(enabled=not app.testing)
     psutil.cpu_percent(interval=None)  # prime: the first call always returns 0
     return app
 
 
 def _register_blueprints(app):
-    from . import auth, files, meta, transfers, users
+    from . import auth, files, insights, meta, transfers, users
 
     app.register_blueprint(meta.bp)
     app.register_blueprint(auth.bp)
@@ -63,6 +65,8 @@ def _register_blueprints(app):
     app.register_blueprint(files.bp)
     app.register_blueprint(files.stats_bp)
     app.register_blueprint(transfers.bp)
+    app.register_blueprint(insights.history_bp)
+    app.register_blueprint(insights.metrics_bp)
 
 
 def _register_hooks(app):

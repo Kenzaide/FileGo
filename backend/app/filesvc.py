@@ -10,6 +10,7 @@ import urllib.parse
 from flask import Response, current_app, request, stream_with_context
 from sqlalchemy import func, select, update
 
+from . import monitor
 from .constants import ALLOWED_EXTENSIONS, BUFFER_OPTIONS_KB, CATEGORIES
 from .errors import ApiError
 from .extensions import db
@@ -173,6 +174,16 @@ def resolve_buffer_kb(user):
     return value
 
 
+def experiment_fields(user):
+    """Label and network note for this transfer: the admin's current experiment, or admin headers."""
+    exp = monitor.get_experiment()
+    label, note = exp["label"], exp["networkNote"]
+    if user.role == "admin":
+        label = clean_text(request.headers.get("X-Experiment-Label") or "", 80) or label
+        note = clean_text(request.headers.get("X-Network-Note") or "", 255) or note
+    return {"label": label, "network_note": note}
+
+
 # ---------------------------------------------------------------- upload (chunked)
 
 def _magic_ok(ext, head):
@@ -258,10 +269,14 @@ def receive_upload(owner, visibility, subject, category, title, recipient=None):
         server_mode=cfg["SERVER_MODE"],
         client_device=client_device(),
         sha256_expected=expected,
+        **experiment_fields(owner),
     )
+    mon = None
 
     def fail(code, message, status, **extra):
         db.session.rollback()
+        if mon is not None:
+            extra = {**mon.end(), **extra}
         try:
             _record_log(status="failed", error=message[:255], **{**base, "size": declared}, **extra)
         except Exception:  # noqa: BLE001 - never hide the real error
@@ -278,6 +293,7 @@ def receive_upload(owner, visibility, subject, category, title, recipient=None):
     tmp_dir = os.path.join(root, ".tmp")
     os.makedirs(tmp_dir, exist_ok=True)
     tmp_path = os.path.join(tmp_dir, new_stored_name())
+    mon = monitor.begin()
     hasher = hashlib.sha256()
     written = 0
     write_s = hash_s = 0.0
@@ -335,6 +351,7 @@ def receive_upload(owner, visibility, subject, category, title, recipient=None):
             write_seconds=write_s,
             hash_seconds=hash_s,
             response_ms=((first_at - started) * 1000) if first_at else None,
+            **mon.end(),
         )
         if expected and expected != digest:
             raise _Fail("hash_mismatch", "SHA-256 did not match: the file was corrupted in transfer.", 400)
@@ -436,11 +453,14 @@ def send_download(f, user):
     started = time.perf_counter()
     app = current_app._get_current_object()
 
+    exp = experiment_fields(user)
+
     def generate():
         sent = 0
         read_s = 0.0
         first_at = None
         ok = False
+        mon = monitor.begin()
         try:
             while True:
                 t = time.perf_counter()
@@ -456,6 +476,7 @@ def send_download(f, user):
         finally:
             fh.close()
             end = time.perf_counter()
+            resources = mon.end()
             with app.app_context():
                 try:
                     _finish_download(
@@ -464,6 +485,7 @@ def send_download(f, user):
                         read_seconds=read_s,
                         response_ms=((first_at - started) * 1000) if first_at else None,
                         count=ok and public and user_id != owner_id,
+                        extra={**resources, **exp},
                     )
                 except Exception:  # noqa: BLE001
                     db.session.rollback()
@@ -473,7 +495,7 @@ def send_download(f, user):
 
 
 def _finish_download(ok, user_id, file_id, file_name, size, sent, buffer_kb, mode, device,
-                     server_seconds, read_seconds, response_ms, count):
+                     server_seconds, read_seconds, response_ms, count, extra=None):
     if ok:
         # Atomic counter: never read-modify-write.
         if count:
@@ -490,7 +512,7 @@ def _finish_download(ok, user_id, file_id, file_name, size, sent, buffer_kb, mod
             error=None if ok else "Download did not finish.",
             size=size, bytes_transferred=sent, buffer_kb=buffer_kb, server_seconds=server_seconds,
             write_seconds=read_seconds, hash_seconds=0.0, client_device=device, server_mode=mode,
-            response_ms=response_ms,
+            response_ms=response_ms, **(extra or {}),
         )
     )
     db.session.commit()
