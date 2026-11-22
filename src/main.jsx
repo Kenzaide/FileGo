@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, useNavigate, useLocation, Navigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard, LibraryBig, FolderOpen, Send, Inbox, History, Activity, Settings, ShieldCheck, LogOut,
-  Search, Upload, Download, FileText, FileImage, File, ChevronRight, Plus, Menu, X, Trash2, Edit3, Eye,
+  Search, Upload, Download, FileText, FileImage, File, ChevronRight, Plus, Menu, X, Trash2, Edit3, Eye, EyeOff,
   ArrowUpRight, ArrowDownLeft, HardDrive, Cpu, MemoryStick, Wifi, Users, Lock, Globe, BookOpen,
   CheckCircle2, AlertCircle, Sun, Moon, RefreshCw, Shield, CloudUpload, FileUp, ChartNoAxesCombined,
 } from 'lucide-react';
@@ -1062,6 +1062,15 @@ function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
+  const termsCloseRef = useRef(null);
+  useEffect(() => {
+    if (!termsOpen) return;
+    const onKeyDown = (e) => { if (e.key === 'Escape') setTermsOpen(false); };
+    document.addEventListener('keydown', onKeyDown);
+    termsCloseRef.current?.focus();
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [termsOpen]);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const passwordChecks = [
@@ -1128,7 +1137,7 @@ function Auth() {
             <label>Password
               <span className="auth-password-field">
                 <input required type={showPassword ? 'text' : 'password'} minLength={registering ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={registering ? 'Create a strong password' : 'Enter your password'} autoComplete={registering ? 'new-password' : 'current-password'} disabled={busy} />
-                <button type="button" className="auth-password-toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}><Eye size={17} /><span>{showPassword ? 'Hide' : 'Show'}</span></button>
+                <button type="button" className="auth-password-toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}<span>{showPassword ? 'Hide' : 'Show'}</span></button>
               </span>
             </label>
             {registering && <>
@@ -1140,15 +1149,12 @@ function Auth() {
               <label>Confirm password
                 <span className="auth-password-field">
                   <input required type={showConfirm ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your password" autoComplete="new-password" disabled={busy} aria-invalid={confirmPassword.length > 0 && !passwordMatch} aria-describedby="auth-confirm-feedback" />
-                  <button type="button" className="auth-password-toggle" onClick={() => setShowConfirm((v) => !v)} aria-label={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'} aria-pressed={showConfirm}><Eye size={17} /><span>{showConfirm ? 'Hide' : 'Show'}</span></button>
+                  <button type="button" className="auth-password-toggle" onClick={() => setShowConfirm((v) => !v)} aria-label={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'} aria-pressed={showConfirm}>{showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}<span>{showConfirm ? 'Hide' : 'Show'}</span></button>
                 </span>
                 <small id="auth-confirm-feedback" className={'auth-password-match ' + (passwordMatch ? 'met' : '')}>{confirmPassword ? (passwordMatch ? 'Passwords match' : 'Passwords do not match yet') : 'Enter the same password again.'}</small>
               </label>
               <div className="auth-terms">
-                <details><summary>Read terms and conditions</summary>
-                  <p>FileGo is an academic file-sharing platform. Upload only materials you have permission to share, respect other users, and do not post unlawful, harmful, or misleading content. Shared files may be accessible to other users of this FileGo server, depending on the visibility you select. Your account and uploaded files are handled by the operator of this server.</p>
-                  <p>This is a short draft of platform rules, not a complete legal agreement or privacy policy. The project owner should review and publish the final terms before public deployment.</p>
-                </details>
+                <button type="button" className="auth-terms-link" onClick={() => setTermsOpen(true)}>Read terms and conditions</button>
                 <label className="auth-terms-check"><input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} disabled={busy} required /><span>I have read and agree to the FileGo terms and conditions.</span></label>
               </div>
             </>}
@@ -1159,6 +1165,13 @@ function Auth() {
           {DEMO_MODE && <div className="demo-hint"><strong>Demo access</strong><span>student / demo123 (administrator)</span><small>Also: alex and jamie, same password.</small></div>}
         </div>
       </div>
+      {termsOpen && <div className="auth-terms-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setTermsOpen(false); }}>
+        <section className="auth-terms-modal" role="dialog" aria-modal="true" aria-labelledby="filego-terms-title">
+          <header><h2 id="filego-terms-title">FileGo Terms and Conditions</h2><button type="button" ref={termsCloseRef} className="auth-terms-close" aria-label="Close terms and conditions" onClick={() => setTermsOpen(false)}><X size={20}/></button></header>
+          <div className="auth-terms-body"><p>FileGo is an academic file-sharing platform. Upload only materials you have permission to share, respect other users, and do not post unlawful, harmful, or misleading content.</p><p>Shared files may be accessible to other users of this FileGo server, depending on the visibility you select. Your account and uploaded files are handled by the operator of this server.</p><p>This is a short draft of platform rules, not a complete legal agreement or privacy policy. The project owner should review and publish the final terms before public deployment.</p></div>
+          <footer><button type="button" className="auth-terms-done" onClick={() => setTermsOpen(false)}>Close</button></footer>
+        </section>
+      </div>}
     </div>
   );
 }
