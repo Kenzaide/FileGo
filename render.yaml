@@ -1,8 +1,9 @@
+# Temporary public testing only. Data is erased on restarts/redeploys.
 services:
   - type: web
     name: filego
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: npm install && npm run build && pip install -r backend/requirements.txt
     startCommand: python backend/run.py
     healthCheckPath: /api/ping
@@ -12,12 +13,10 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:////var/data/filego.db
+        value: sqlite:////tmp/filego.db
       - key: STORAGE_DIR
-        value: /var/data/storage
+        value: /tmp/filego-storage
       - key: LOG_TO_FILE
         value: "false"
-    disk:
-      name: filego-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: REGISTRATION_MODE
+        value: open
