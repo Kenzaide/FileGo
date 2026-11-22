@@ -443,7 +443,9 @@ function Dashboard() {
       <div className="dash-grid">
         <section className="panel">
           <div className="panel-title"><div><h3>Recent academic materials</h3></div><Link to="/library" className="text-link">View all <ChevronRight size={16} /></Link></div>
-          {recent.loading ? <Loading /> : items.length ? items.map((f) => <FileRow key={f.id} file={f} />) : <Empty title="The library is empty" desc="Be the first to share a material." />}
+          <div className="dashboard-recent-scroll" role="region" aria-label="Recent academic materials" tabIndex={0}>
+            {recent.loading ? <Loading /> : items.length ? items.map((f) => <FileRow key={f.id} file={f} />) : <Empty title="The library is empty" desc="Be the first to share a material." />}
+          </div>
         </section>
         <section className="panel">
           <div className="panel-title"><div><h3>Quick actions</h3></div></div>
