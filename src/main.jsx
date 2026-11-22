@@ -120,7 +120,7 @@ function Empty({ icon: Icon = FolderOpen, title = 'Nothing here yet', desc = 'Yo
   );
 }
 
-const Loading = ({ text = 'Loading…' }) => <div className="empty"><RefreshCw size={26} className="spin" /><p>{text}</p></div>;
+function Loading({text='Loading…',stats=false}){return <div className={stats?'skeleton-stats':'skeleton-list'} role="status" aria-label={text} aria-busy="true">{Array.from({length:stats?4:3},(_,i)=><div className={stats?'skeleton-stat':'skeleton-row'} key={i}><span className="skeleton-block skeleton-icon"/><span className="skeleton-lines"><span className="skeleton-block skeleton-line"/><span className="skeleton-block skeleton-line short"/></span></div>)}<span className="sr-only">{text}</span></div>}
 const Tag = ({ children, tone = '' }) => <span className={'tag ' + tone}>{children}</span>;
 
 function Header({ title, subtitle, actions }) {
@@ -155,9 +155,14 @@ function Pager({ page, perPage, total, onPage }) {
 }
 
 function Modal({ title, subtitle, onClose, children, wide = false }) {
+  const ref=useRef(null),closeRef=useRef(onClose);closeRef.current=onClose;
+  useEffect(()=>{const previous=document.activeElement,node=ref.current;const els=()=>[...node.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]')].filter(x=>x.getClientRects().length);
+    (els()[0]||node).focus();
+    const key=e=>{if(e.key==='Escape'){e.preventDefault();closeRef.current();}if(e.key!=='Tab')return;const a=els();if(!a.length){e.preventDefault();return;}if(e.shiftKey&&document.activeElement===a[0]){e.preventDefault();a[a.length-1].focus();}else if(!e.shiftKey&&document.activeElement===a[a.length-1]){e.preventDefault();a[0].focus();}};
+    document.addEventListener('keydown',key);return()=>{document.removeEventListener('keydown',key);previous?.focus?.();};},[]);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={ref} tabIndex={-1} className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>
           <Button variant="icon" onClick={onClose} aria-label="Close"><X /></Button>
@@ -230,15 +235,12 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
   const job = useRef(null);
   const users = useLoad(() => (visibility === 'direct' ? api.get('/api/users') : Promise.resolve({ items: [] })), [visibility]);
 
-  const choose = (f) => {
-    if (!f) return setFile(null);
-    if (f.size > maxMb * 1024 * 1024) { toast(`That file is larger than the ${maxMb} MB limit.`, 'error'); return; }
-    setFile(f);
-  };
+  const [fileError,setFileError]=useState('');
+  const choose=f=>{setFileError('');if(!f)return setFile(null);const ext=f.name.split('.').pop()?.toLowerCase();if(!(meta?.allowedExtensions||[]).some(x=>x.toLowerCase()===ext)){setFile(null);setFileError('Unsupported format. Choose one of the listed file types.');return;}if(f.size>maxMb*1024*1024){setFile(null);setFileError(`File too large. Maximum: ${maxMb} MB.`);return;}setFile(f);};
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!file) return toast('Choose a file first', 'error');
+    if (!file) return toast(fileError || 'Choose a file first', 'error');
     if (!subjectId.trim()) return toast('Enter a subject', 'error');
     if (visibility === 'direct' && !recipient) return toast('Select a recipient', 'error');
     const q = new URLSearchParams({ subject: subjectId, category });
@@ -256,7 +258,7 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
       bump();
       onClose();
     } catch (err) {
-      if (err.code !== 'cancelled') toast(err.message, 'error');
+      if (err.code !== 'cancelled') { setFileError(err.message || 'Upload failed. Check the connection and try again.'); toast(err.message || 'Upload failed', 'error'); }
       setBusy(false);
       setProgress(null);
     }
@@ -276,6 +278,8 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
           <span>{file ? fmt(file.size) : `${(meta?.allowedExtensions || []).join(', ').toUpperCase()} · up to ${maxMb} MB`}</span>
           <input type="file" accept={allowed} disabled={busy} onChange={(e) => choose(e.target.files[0] || null)} />
         </label>
+        {file && <div className="upload-file-selected" role="status"><CheckCircle2 size={17}/><span><strong>Selected:</strong> {file.name} ({fmt(file.size)})</span><button type="button" onClick={()=>setFile(null)} disabled={busy} aria-label="Remove selected file"><X size={16}/></button></div>}
+        {fileError && <p className="upload-file-error" role="alert">{fileError}</p>}
         <label>Display title
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional: defaults to filename" disabled={busy} />
         </label>
@@ -305,7 +309,7 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
           </label>
         )}
         {progress && (
-          <div className="progress-wrap" aria-live="polite">
+          <div className="progress-wrap" role="status" aria-live="polite" aria-label="File upload progress">
             <div className="progress"><div style={{ width: pct + '%' }} /></div>
             <small>{pct}% · {fmt(progress.loaded)} of {fmt(progress.total)}{speed ? ` · ${speed.toFixed(2)} MB/s` : ''}</small>
           </div>
@@ -433,17 +437,17 @@ function Dashboard() {
           <div className="preview-footer"><FolderOpen size={16} /> Browse course materials <ChevronRight size={16} /></div>
         </div>
       </div>
-      <div className="stats">
+      {stats.loading && !s ? <Loading stats text="Loading dashboard statistics" /> : <div className="stats">
         <Stat label="My files" value={s ? s.myFiles : '—'} Icon={FolderOpen} foot="Materials you own" />
         <Stat label="Library materials" value={recent.data ? recent.data.total : '—'} Icon={LibraryBig} foot="Available to everyone" />
         <Stat label="Received files" value={s ? s.received : '—'} Icon={Inbox} foot="Directly shared with you" />
         <Stat label="Downloads" value={s ? s.downloads : '—'} Icon={Download} foot="Times others downloaded your files" />
-      </div>
+      </div>}
       <div className="dash-grid">
         <section className="panel">
           <div className="panel-title"><div><h3>Recent academic materials</h3></div><Link to="/library" className="text-link">View all <ChevronRight size={16} /></Link></div>
           <div className="dashboard-recent-scroll" role="region" aria-label="Recent academic materials" tabIndex={0}>
-            {recent.loading ? <Loading /> : items.length ? items.map((f) => <FileRow key={f.id} file={f} />) : <Empty title="The library is empty" desc="Be the first to share a material." />}
+            {recent.loading && !recent.data ? <Loading text="Loading recent materials" /> : recent.error ? <Empty title="Could not load recent materials" desc="Check your connection and refresh." /> : items.length ? items.map((f) => <FileRow key={f.id} file={f} />) : <Empty title="The library is empty" desc="Be the first to share a material." />}
           </div>
         </section>
         <section className="panel">
@@ -478,15 +482,16 @@ function Library() {
       <Header title="Academic Library" subtitle="Discover reviewers, notes, presentations, and resources shared by students." actions={<Button onClick={() => setUpload(true)}><Plus size={17} /> Contribute material</Button>} />
       <div className="panel">
         <div className="filters">
-          <div className="search"><Search size={18} /><input placeholder="Search by title, subject, or uploader..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+          <div className="search"><Search size={18} /><input aria-label="Search academic materials" placeholder="Search by title, subject, or uploader..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
           <input className="library-subject-input" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Filter by subject" placeholder="Filter by subject..." maxLength={120} autoComplete="off" />
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Material type">
             <option value="">All types</option>
             {(meta?.categories || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
+        {(search || subject || category) && <button className="clear-filters" type="button" onClick={()=>{setSearch('');setSubject('');setCategory('');setPage(1);}}>Clear filters</button>}
         <div className="section-caption">{res.loading ? 'Searching…' : `${total} material${total !== 1 ? 's' : ''} found`}</div>
-        {res.loading && !items.length ? <Loading /> : items.length ? items.map((f) => <FileRow key={f.id} file={f} />) : <Empty title="No matching materials" desc="Try changing your search or filters." />}
+        {res.loading && !items.length ? <Loading text="Searching library materials" /> : res.error ? <Empty title="Library unavailable" desc="Check your connection and try again." /> : items.length ? items.map((f) => <FileRow key={f.id} file={f} />) : <Empty title={search || subject || category ? "No matching materials" : "The library is empty"} desc={search || subject || category ? "Try a different search or clear your filters." : "Be the first to contribute an academic material."} />}
         <Pager page={page} perPage={20} total={total} onPage={setPage} />
       </div>
       {upload && <UploadModal onClose={() => setUpload(false)} />}
@@ -582,8 +587,8 @@ function MyFiles() {
         <Stat label="Private files" value={files.filter((f) => f.visibility === 'private').length} Icon={Lock} foot="Restricted access" />
       </div>
       <section className="panel">
-        <div className="filters"><div className="search"><Search size={18} /><input placeholder="Search your files..." value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
-        {res.loading && !files.length ? <Loading /> : files.length ? files.map((f) => (
+        <div className="filters"><div className="search"><Search size={18} /><input aria-label="Search my files" placeholder="Search your files..." value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
+        {res.loading && !files.length ? <Loading text="Loading your files" /> : res.error ? <Empty title="Could not load your files" desc="Check your connection and try again." /> : files.length ? files.map((f) => (
           <div className="file-row" key={f.id}>
             <div className={'file-icon ' + f.kind.toLowerCase()}>{iconFor(f)}</div>
             <div className="file-main">
@@ -596,7 +601,7 @@ function MyFiles() {
             <Button variant="subtle" onClick={() => setEdit(f)} title="Edit title, subject and category" aria-label="Edit"><Edit3 size={16} /></Button>
             <Button variant="danger-icon" onClick={() => setDeleteTarget(f)} title="Delete" aria-label="Delete"><Trash2 size={16} /></Button>
           </div>
-        )) : <Empty title="No files yet" desc="Upload your first academic material to get started." />}
+        )) : <Empty title={search ? "No matching files" : "No files yet"} desc={search ? "Try a different filename or clear your search." : "Upload your first academic material to get started."} />}
       </section>
       {upload && <UploadModal onClose={() => setUpload(false)} />}
       {edit && <EditModal file={edit} onClose={() => setEdit(null)} />}
