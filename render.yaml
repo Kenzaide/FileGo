@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: filego
+    runtime: python
+    plan: starter
+    buildCommand: npm install && npm run build && pip install -r backend/requirements.txt
+    startCommand: python backend/run.py
+    healthCheckPath: /api/ping
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:////var/data/filego.db
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      - key: LOG_TO_FILE
+        value: "false"
+    disk:
+      name: filego-data
+      mountPath: /var/data
+      sizeGB: 1
