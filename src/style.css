@@ -21,3 +21,6 @@
 
 /* Compact dashboard panels even when there are no recent materials. */
 .dash-grid{align-items:start}.dash-grid>.panel{min-height:0}.dash-grid .dashboard-recent-scroll .empty{min-height:155px;padding:18px 12px}.dash-grid .dashboard-recent-scroll .empty svg{width:26px;height:26px}.dash-grid .dashboard-recent-scroll .empty h3{margin-top:8px}.dash-grid .dashboard-recent-scroll .empty p{margin-top:4px}
+
+/* Academic Library: free-text subject filter matching upload subject entry. */
+.filters .library-subject-input{width:220px;max-width:28%;min-width:155px;flex:0 1 220px;font-size:12px;height:45px;min-height:45px;border-radius:10px;background:var(--surface);color:var(--text)}.filters .library-subject-input::placeholder{color:var(--muted)}@media(max-width:700px){.filters .library-subject-input{width:100%;max-width:none;flex:1 1 100%}}
