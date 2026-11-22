@@ -468,8 +468,9 @@ function Library() {
   const [page, setPage] = useState(1);
   const [upload, setUpload] = useState(false);
   const q = useDebounced(search);
-  useEffect(() => setPage(1), [q, subject, category]);
-  const res = useLoad(() => api.get('/api/files', { scope: 'library', q, subject, category, page, perPage: 20 }), [q, subject, category, page]);
+  const subjectQuery = useDebounced(subject);
+  useEffect(() => setPage(1), [q, subjectQuery, category]);
+  const res = useLoad(() => api.get('/api/files', { scope: 'library', q, subject: subjectQuery, category, page, perPage: 20 }), [q, subjectQuery, category, page]);
   const items = res.data?.items || [];
   const total = res.data?.total || 0;
   return (
@@ -478,10 +479,7 @@ function Library() {
       <div className="panel">
         <div className="filters">
           <div className="search"><Search size={18} /><input placeholder="Search by title, subject, or uploader..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-          <select value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject">
-            <option value="">All subjects</option>
-            {(meta?.subjects || []).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
+          <input className="library-subject-input" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Filter by subject" placeholder="Filter by subject..." maxLength={120} autoComplete="off" />
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Material type">
             <option value="">All types</option>
             {(meta?.categories || []).map((s) => <option key={s}>{s}</option>)}
