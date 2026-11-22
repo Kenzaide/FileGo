@@ -54,7 +54,7 @@ def _filters(user, scope):
             or_(
                 Subject.id == subject,
                 func.lower(func.coalesce(Subject.code, "")) == subject,
-                func.lower(Subject.name) == subject,
+                func.lower(Subject.name).contains(subject, autoescape=True),
             )
         )
     category = clean_text(request.args.get("category", ""), 60).lower()
