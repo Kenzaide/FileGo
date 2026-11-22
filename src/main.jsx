@@ -281,8 +281,7 @@ function UploadModal({ onClose, mode = 'public', recipientId = '' }) {
         </label>
         <div className="two-col">
           <label>Subject
-            <input type="text" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} placeholder="e.g. CMSC306 · Networks & Communication" maxLength={120} required disabled={busy} list="filego-subject-suggestions" autoComplete="off" />
-            <datalist id="filego-subject-suggestions">{subjects.map((sub) => <option key={sub.id} value={sub.label} />)}</datalist>
+            <input type="text" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} placeholder="e.g. CMSC306 · Networks & Communication" maxLength={120} required disabled={busy} autoComplete="off" />
           </label>
           <label>Category
             <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={busy}>
