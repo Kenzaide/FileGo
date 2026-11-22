@@ -497,15 +497,16 @@ function Library() {
 function EditModal({ file, onClose }) {
   const { meta, toast, bump } = useApp();
   const [name, setName] = useState(file.name);
-  const [subjectId, setSubjectId] = useState(file.subjectId);
+  const [subject, setSubject] = useState(file.subject || file.subjectName || '');
   const [category, setCategory] = useState(file.category);
   const [visibility, setVisibility] = useState(file.visibility);
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
+    if (!subject.trim()) return toast('Enter a subject', 'error');
     setBusy(true);
     try {
-      await api.patch('/api/files/' + file.id, { name, subjectId, category, visibility });
+      await api.patch('/api/files/' + file.id, { name, subject: subject.trim(), category, visibility });
       toast('File updated');
       bump();
       onClose();
@@ -517,7 +518,7 @@ function EditModal({ file, onClose }) {
         <label>Display title<input required value={name} onChange={(e) => setName(e.target.value)} maxLength={255} /></label>
         <div className="two-col">
           <label>Subject
-            <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>{(meta?.subjects || []).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+            <input type="text" required value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Basic Machine Learning" maxLength={120} autoComplete="off" disabled={busy} />
           </label>
           <label>Category
             <select value={category} onChange={(e) => setCategory(e.target.value)}>{(meta?.categories || []).map((s) => <option key={s}>{s}</option>)}</select>
