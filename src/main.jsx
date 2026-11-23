@@ -1141,7 +1141,7 @@ function Auth() {
       </div>
       <div className="auth-form-wrap" ref={authScrollRef}>
         <div className="auth-form">
-          <div className="mobile-brand"><FolderOpen /> FileGo</div>
+          <div className="mobile-brand"><img src="/filego-logo.png" alt="" width="36" height="36" /> <span>FileGo</span></div>
           <h2>{registering ? 'Create your account' : 'Welcome back'}</h2>
           <p>{registering ? 'Join your academic sharing community.' : 'Sign in to continue to your academic workspace.'}</p>
           <form onSubmit={submit} className="form-stack">
